@@ -1178,7 +1178,7 @@ module Formtastic #:nodoc:
 
         template.content_tag(:fieldset,
           template.content_tag(:legend, 
-            template.label_tag(nil, options[:label] || localized_string(method, method, :label) || humanized_attribute_name(method), :for => nil), :class => :label
+            template.label_tag(nil, localized_string(method, method, :label) || humanized_attribute_name(method), :for => nil), :class => :label
           ) << 
           template.content_tag(:ol, Formtastic::Util.html_safe(list_item_content.join))
         )
