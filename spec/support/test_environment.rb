@@ -1,7 +1,9 @@
 if Formtastic::Util.rails3?
-  gem 'rspec', '~> 2.0.0.beta12'
-  gem 'rspec-rails', '~> 2.0.0.beta12'
-  
+  gem 'rspec', '~> 2.0.0.beta19'
+  gem 'rspec-rails', '~> 2.0.0.beta19'
+  gem 'rspec_tag_matchers'
+  gem 'i18n', '>= 0.4.0'
+
   require "rubygems"
   require "action_controller/railtie"
   require "active_resource/railtie"
@@ -9,12 +11,13 @@ if Formtastic::Util.rails3?
   require 'rspec/core'
   require 'rspec/rails'
   require 'rspec_tag_matchers'
-  
+
   # Create a simple rails application for use in testing the viewhelper
   module FormtasticTest
     class Application < Rails::Application
       # Configure the default encoding used in templates for Ruby 1.9.
       config.encoding = "utf-8"
+      config.active_support.deprecation = :stderr
     end
   end
   FormtasticTest::Application.initialize!
@@ -29,7 +32,10 @@ if Formtastic::Util.rails3?
 else
   gem 'rspec', '>= 1.2.6'
   gem 'rspec-rails', '>= 1.2.6'
+  gem 'rspec_tag_matchers'
   gem 'hpricot', '>= 0.6.1'
+  gem 'i18n', '< 0.4.0'
+
   require 'rspec_tag_matchers'
 
   Spec::Runner.configure do |config|

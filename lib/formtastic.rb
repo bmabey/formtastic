@@ -20,11 +20,12 @@ module Formtastic #:nodoc:
     @@file_methods = [ :file?, :public_filename, :filename ]
     @@priority_countries = ["Australia", "Canada", "United Kingdom", "United States"]
     @@i18n_lookups_by_default = false
+    @@escape_html_entities_in_hints_and_labels = true
     @@default_commit_button_accesskey = nil 
 
     cattr_accessor :default_text_field_size, :default_text_area_height, :all_fields_required_by_default, :include_blank_for_select_by_default,
                    :required_string, :optional_string, :inline_errors, :label_str_method, :collection_label_methods,
-                   :inline_order, :file_methods, :priority_countries, :i18n_lookups_by_default, :default_commit_button_accesskey 
+                   :inline_order, :file_methods, :priority_countries, :i18n_lookups_by_default, :escape_html_entities_in_hints_and_labels, :default_commit_button_accesskey 
 
     RESERVED_COLUMNS = [:created_at, :updated_at, :created_on, :updated_on, :lock_version, :version]
 
@@ -528,13 +529,13 @@ module Formtastic #:nodoc:
           raise ArgumentError, 'You gave :for option with a block to inputs method, ' <<
                                'but the block does not accept any argument.' if block.arity <= 0
 
-          Proc.new do |f|
+          lambda do |f|
             contents = f.inputs(*args){ block.call(f) }
             template.concat(contents) if ::Formtastic::Util.rails3?
             contents
           end
         else
-          Proc.new do |f|
+          lambda do |f|
             contents = f.inputs(*args)
             template.concat(contents) if ::Formtastic::Util.rails3?
             contents
@@ -635,15 +636,14 @@ module Formtastic #:nodoc:
       end
 
       # Outputs a hidden field inside the wrapper, which should be hidden with CSS.
-      # Additionals options can be given and will be sent straight to hidden input
-      # element.
+      # Additionals options can be given using :input_hml. Should :input_html not be
+      # specified every option except for formtastic options will be sent straight
+      # to hidden input element.
       #
       def hidden_input(method, options)
         options ||= {}
-        if options[:input_html].present?
-          options[:value] = options[:input_html][:value] if options[:input_html][:value].present?
-        end
-        self.hidden_field(method, strip_formtastic_options(options))
+        html_options = options.delete(:input_html) || strip_formtastic_options(options)
+        self.hidden_field(method, html_options)
       end
 
       # Outputs a label and a select box containing options from the parent
@@ -897,7 +897,7 @@ module Formtastic #:nodoc:
           html_options[:checked] = selected_value == value if selected_option_is_present
 
           li_content = template.content_tag(:label,
-            Formtastic::Util.html_safe("#{self.radio_button(input_name, value, html_options)} #{label}"),
+            Formtastic::Util.html_safe("#{self.radio_button(input_name, value, html_options)} #{escape_html_entities(label)}"),
             :for => input_id
           )
 
@@ -1029,6 +1029,7 @@ module Formtastic #:nodoc:
         i18n_date_order = ::I18n.t(:order, :scope => [:date])
         i18n_date_order = nil unless i18n_date_order.is_a?(Array)
         inputs   = options.delete(:order) || i18n_date_order || [:year, :month, :day]
+        inputs   = [] if options[:ignore_date]
         labels   = options.delete(:labels) || {}
 
         time_inputs = [:hour, :minute]
@@ -1136,6 +1137,15 @@ module Formtastic #:nodoc:
       #   f.input :authors, :as => :check_boxes, :selected => Author.most_popular.collect(&:id)
       #   f.input :authors, :as => :check_boxes, :selected => nil   # override any defaults: select none
       #
+      #
+      # Formtastic works around a bug in rails handling of check box collections by
+      # not generating the hidden fields for state checking of the checkboxes 
+      # The :hidden_fields option provides a way to re-enable these hidden inputs by
+      # setting it to true.
+      #
+      #   f.input :authors, :as => :check_boxes, :hidden_fields => false
+      #   f.input :authors, :as => :check_boxes, :hidden_fields => true
+      #
       # Finally, you can set :value_as_class => true if you want the li wrapper around each checkbox / label 
       # combination to contain a class with the value of the radio button (useful for applying specific 
       # CSS or Javascript to a particular checkbox).
@@ -1145,30 +1155,32 @@ module Formtastic #:nodoc:
         html_options = options.delete(:input_html) || {}
 
         input_name      = generate_association_input_name(method)
+        hidden_fields   = options.delete(:hidden_fields)
         value_as_class  = options.delete(:value_as_class)
         unchecked_value = options.delete(:unchecked_value) || ''
         html_options    = { :name => "#{@object_name}[#{input_name}][]" }.merge(html_options)
         input_ids       = []
 
-        selected_option_is_present = [:selected, :checked].any? { |k| options.key?(k) }
-        selected_values = (options.key?(:checked) ? options[:checked] : options[:selected]) if selected_option_is_present
-        selected_values  = [*selected_values].compact
-
+        selected_values = find_selected_values_for_column(method, options)
         disabled_option_is_present = options.key?(:disabled)
         disabled_values = [*options[:disabled]] if disabled_option_is_present
 
-        list_item_content = collection.map do |c|
+        li_options = value_as_class ? { :class => [method.to_s.singularize, 'default'].join('_') } : {}
+
+        list_item_content = []
+        list_item_content << self.create_hidden_field_for_check_boxes(input_name, value_as_class) unless hidden_fields
+        list_item_content << collection.map do |c|
           label = c.is_a?(Array) ? c.first : c
           value = c.is_a?(Array) ? c.last : c
           input_id = generate_html_id(input_name, value.to_s.gsub(/\s/, '_').gsub(/\W/, '').downcase)
           input_ids << input_id
 
-          html_options[:checked] = selected_values.include?(value) if selected_option_is_present
+          html_options[:checked] = selected_values.include?(value)
           html_options[:disabled] = disabled_values.include?(value) if disabled_option_is_present
           html_options[:id] = input_id
 
           li_content = template.content_tag(:label,
-            Formtastic::Util.html_safe("#{self.check_box(input_name, html_options, value, unchecked_value)} #{label}"),
+            Formtastic::Util.html_safe("#{self.create_check_boxes(input_name, html_options, value, unchecked_value, hidden_fields)} #{escape_html_entities(label)}"),
             :for => input_id
           )
 
@@ -1182,6 +1194,41 @@ module Formtastic #:nodoc:
           ) << 
           template.content_tag(:ol, Formtastic::Util.html_safe(list_item_content.join))
         )
+      end
+
+      # Used by check_boxes input. The selected values will be set either by:
+      #
+      # * Explicitly provided through :selected or :checked
+      # * Values retrieved through an association
+      #
+      # If the collection is not a hash or an array of strings, fixnums or symbols,
+      # we use value_method to retrieve an array with the values
+      #
+      def find_selected_values_for_column(method, options)
+        selected_option_is_present = [:selected, :checked].any? { |k| options.key?(k) }
+        if selected_option_is_present
+          selected_values = (options.key?(:checked) ? options[:checked] : options[:selected])
+        elsif object.respond_to?(method)
+          collection = [object.send(method)].compact.flatten
+          label, value = detect_label_and_value_method!(collection, options)
+          selected_values = collection.map { |o| send_or_call(value, o) }
+        end
+        selected_values = [*selected_values].compact
+        selected_values
+      end
+      
+      # Outputs a custom hidden field for check_boxes
+      def create_hidden_field_for_check_boxes(method, value_as_class) #:nodoc:
+        li_options = value_as_class ? { :class => [method.to_s.singularize, 'default'].join('_') } : {}
+        input_name = "#{object_name}[#{method.to_s}][]"
+        template.content_tag(:li, template.hidden_field_tag(input_name, ''), li_options)
+      end
+
+      # Outputs a checkbox tag. If called with no_hidden_input = true a plain check_box_tag is returned,
+      # otherwise the helper uses the output generated by the rails check_box method.
+      def create_check_boxes(input_name, html_options = {}, checked_value = "1", unchecked_value = "0", hidden_fields = false) #:nodoc:
+        return template.check_box_tag(input_name, checked_value, html_options[:checked], html_options) unless hidden_fields == true
+        self.check_box(input_name, html_options, checked_value, unchecked_value)
       end
 
       # Outputs a country select input, wrapping around a regular country_select helper. 
@@ -1222,9 +1269,11 @@ module Formtastic #:nodoc:
         html_options = options.delete(:input_html) || {}
         checked = options.key?(:checked) ? options[:checked] : options[:selected]
         html_options[:checked] = checked == true if [:selected, :checked].any? { |k| options.key?(k) }
+        checked_value = options.delete(:checked_value) || '1'
+        unchecked_value = options.delete(:unchecked_value) || '0'
 
         input = self.check_box(method, strip_formtastic_options(options).merge(html_options),
-                               options.delete(:checked_value) || '1', options.delete(:unchecked_value) || '0')
+                               checked_value, unchecked_value)
         options = options_for_label(options)
 
         # the label() method will insert this nested input into the label at the last minute
@@ -1242,7 +1291,7 @@ module Formtastic #:nodoc:
       #
       def inline_hints_for(method, options) #:nodoc:
         options[:hint] = localized_string(method, options[:hint], :hint)
-        return if options[:hint].blank?
+        return if options[:hint].blank? or options[:hint].kind_of? Hash
         template.content_tag(:p, Formtastic::Util.html_safe(options[:hint]), :class => 'inline-hints')
       end
 
@@ -1420,7 +1469,8 @@ module Formtastic #:nodoc:
 
         # Return if we have an Array of strings, fixnums or arrays
         return collection if (collection.instance_of?(Array) || collection.instance_of?(Range)) &&
-                             [Array, Fixnum, String, Symbol].include?(collection.first.class)
+                             [Array, Fixnum, String, Symbol].include?(collection.first.class) &&
+                             !(options.include?(:label_method) || options.include?(:value_method))
 
         label, value = detect_label_and_value_method!(collection, options)
         collection.map { |o| [send_or_call(label, o), send_or_call(value, o)] }
@@ -1437,7 +1487,6 @@ module Formtastic #:nodoc:
           if conditions = reflection.options[:conditions]
             options[:find_options][:conditions] = reflection.klass.merge_conditions(conditions, options[:find_options][:conditions])
           end
-
           reflection.klass.find(:all, options[:find_options])
         else
           create_boolean_collection(options)
@@ -1641,7 +1690,7 @@ module Formtastic #:nodoc:
         key = value if value.is_a?(::Symbol)
 
         if value.is_a?(::String)
-          value
+          escape_html_entities(value)
         else
           use_i18n = value.nil? ? @@i18n_lookups_by_default : (value != false)
 
@@ -1663,6 +1712,7 @@ module Formtastic #:nodoc:
 
             i18n_value = ::Formtastic::I18n.t(defaults.shift,
               options.merge(:default => defaults, :scope => type.to_s.pluralize.to_sym))
+            i18n_value = escape_html_entities(i18n_value) if i18n_value.is_a?(::String)
             i18n_value.blank? ? nil : i18n_value
           end
         end
@@ -1693,6 +1743,14 @@ module Formtastic #:nodoc:
           options[:include_blank] = @@include_blank_for_select_by_default
         end
         options
+      end
+
+      def escape_html_entities(string) #:nodoc:
+        if @@escape_html_entities_in_hints_and_labels
+          # Acceppt html_safe flag as indicator to skip escaping
+          string = template.escape_once(string) unless string.respond_to?(:html_safe?) && string.html_safe? == true
+        end
+        string
       end
 
   end
@@ -1732,9 +1790,7 @@ module Formtastic #:nodoc:
   module SemanticFormHelper
     @@builder = ::Formtastic::SemanticFormBuilder
     mattr_accessor :builder
-    
-    @@default_field_error_proc = nil
-    
+        
     # Override the default ActiveRecordHelper behaviour of wrapping the input.
     # This gets taken care of semantically by adding an error class to the LI tag
     # containing the input.
@@ -1744,11 +1800,11 @@ module Formtastic #:nodoc:
     end
     
     def with_custom_field_error_proc(&block)
-      @@default_field_error_proc = ::ActionView::Base.field_error_proc
+      default_field_error_proc = ::ActionView::Base.field_error_proc
       ::ActionView::Base.field_error_proc = FIELD_ERROR_PROC
-      result = yield
-      ::ActionView::Base.field_error_proc = @@default_field_error_proc
-      result
+      yield
+    ensure
+      ::ActionView::Base.field_error_proc = default_field_error_proc
     end
     
     def semantic_remote_form_for_wrapper(record_or_name_or_array, *args, &proc)
@@ -1768,12 +1824,14 @@ module Formtastic #:nodoc:
           options[:builder] ||= @@builder
           options[:html] ||= {}
 
+          singularizer = defined?(ActiveModel::Naming.singular) ? ActiveModel::Naming.method(:singular) : ActionController::RecordIdentifier.method(:singular_class_name)
+
           class_names = options[:html][:class] ? options[:html][:class].split(" ") : []
           class_names << "formtastic"
           class_names << case record_or_name_or_array
             when String, Symbol then record_or_name_or_array.to_s               # :post => "post"
-            when Array then ActionController::RecordIdentifier.singular_class_name(record_or_name_or_array.last.class)  # [@post, @comment] # => "comment"
-            else ActionController::RecordIdentifier.singular_class_name(record_or_name_or_array.class)                  # @post => "post"
+            when Array then singularizer.call(record_or_name_or_array.last.class)  # [@post, @comment] # => "comment"
+            else singularizer.call(record_or_name_or_array.class)                  # @post => "post"
           end
           options[:html][:class] = class_names.join(" ")
           

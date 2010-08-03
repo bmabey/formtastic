@@ -1,5 +1,5 @@
 # coding: utf-8
-require File.dirname(__FILE__) + '/spec_helper'
+require 'spec_helper'
 
 describe 'SemanticFormBuilder#input' do
   
@@ -703,6 +703,23 @@ describe 'SemanticFormBuilder#input' do
               output_buffer.concat(form) if Formtastic::Util.rails3?
               output_buffer.should_not have_tag('form li p.inline-hints', @localized_hint_text)
             end
+          end
+        end
+        
+        describe 'when localized hint (I18n) is a model with attribute hints' do
+          it "should see the provided hash as a blank entry" do
+            ::I18n.backend.store_translations :en,
+            :formtastic => {
+                :hints => {
+                  :title => { # movie title
+                    :summary => @localized_hint_text # summary of movie
+                   }
+                 }
+              }
+            semantic_form_for(@new_post) do |builder|
+              concat(builder.input(:title, :hint => true))
+            end
+            output_buffer.should_not have_tag('form li p.inline-hints', @localized_hint_text)
           end
         end
         

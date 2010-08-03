@@ -1,12 +1,34 @@
 (HEAD)
 * Changed semantic_remote_form_for to allow for unobstrusive javascript / :remote option (rails3)
-* Changed spec_helper to support Rails 2 with Rspec od Rails 3 with Rspec 3 environments
+* Changed spec_helper to support Rails 2 with RSpec or Rails 3 with RSpec 2 environments
 * Changed Rakefile to initalize the correct testing framework for the enviroment
+* Changed i18n dependency to >= 0.4
 * Fixed use of model_name.human instead of model_name.human_name (rails3)
 * Fixed use of deprecated Errors#on_base
-* Added railtie to perform initialization tasks after the rails git framework is available (rails3)
+* Fixed use of ActionController::RecordIdentifier#singular_class_name (rails3)
+* Added railtie to perform initialization tasks after the rails framework is available (rails3)
 * Added compatible install and form helpers (rails3)
 * Added support for ActiveModel Validations, thanks to Guillaume Belleguic (rails3)
+
+1.0.0.beta4
+
+* ensure i18n < 0.4 is listed as a dependency in the gemspec
+
+1.0.0.beta3
+
+* Added :ignore_date option to time inputs (#308)
+* Fixed inputs_for_nested_attributes returning out of the proc on has_many associated nested models.
+* Fixed with_custom_field_error_proc to use ensure for restoring default field_error_proc and to store it in a local variable instead of in a class variable (nested calls were problematic due to the globalness of class variables)
+
+1.0.0.beta2
+
+* Added default escaping of html entities in labels and hints (#292, #299)
+* Added/Fixed that :value_method and :label_method were not being used for simple collections (like Arrays)
+* Added some more compatibility for Mongooid and other ORMs by checking for reflection information before calling it
+* Fixed deprecation warnings in Rails 2.3.6 and newer
+* Fixed a bug where :check_boxes and :radio were using method instead of :label option
+* Fixed a conflict where i18n lookups were failing when an attribute and model have the same name
+* Fixed some html that was not marked as safe
 
 1.0.0.beta
 

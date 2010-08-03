@@ -4,18 +4,20 @@ require 'active_support'
 require 'action_pack'
 require 'action_view'
 require 'action_controller'
+require 'action_mailer'
 
 require File.expand_path(File.join(File.dirname(__FILE__), '../lib/formtastic/util'))
 require File.expand_path(File.join(File.dirname(__FILE__), '../lib/formtastic'))
 require File.expand_path(File.join(File.dirname(__FILE__), '../lib/formtastic/layout_helper'))
 
 # Requires supporting files with custom matchers and macros, etc,
-# in ./support/ and its subdirectories.
-Dir["#{File.dirname(__FILE__)}/support/**/*.rb"].each {|f| require f}
+# in ./support/ and its subdirectories in alphabetic order.
+Dir["#{File.dirname(__FILE__)}/support/**/*.rb"].sort.each {|f| require f}
 
 module FormtasticSpecHelper
   include ActionPack
   include ActionView::Context if defined?(ActionView::Context)
+  include ActionController::RecordIdentifier
   include ActionView::Helpers::FormHelper
   include ActionView::Helpers::FormTagHelper
   include ActionView::Helpers::FormOptionsHelper
@@ -24,12 +26,11 @@ module FormtasticSpecHelper
   include ActionView::Helpers::TextHelper
   include ActionView::Helpers::ActiveRecordHelper if defined?(ActionView::Helpers::ActiveRecordHelper)
   include ActionView::Helpers::ActiveModelHelper if defined?(ActionView::Helpers::ActiveModelHelper)
-  include ActionView::Helpers::RecordIdentificationHelper
   include ActionView::Helpers::DateHelper
   include ActionView::Helpers::CaptureHelper
   include ActionView::Helpers::AssetTagHelper
   include ActiveSupport
-  include ActionController::PolymorphicRoutes
+  include ActionController::PolymorphicRoutes if defined?(ActionController::PolymorphicRoutes)
   
   include Formtastic::SemanticFormHelper
   
@@ -111,6 +112,7 @@ module FormtasticSpecHelper
     def new_author_path; "/authors/new"; end
     
     @fred = mock('user')
+    @fred.stub!(:to_ary)
     @fred.stub!(:class).and_return(::Author)
     @fred.stub!(:to_label).and_return('Fred Smith')
     @fred.stub!(:login).and_return('fred_smith')
@@ -121,6 +123,7 @@ module FormtasticSpecHelper
     @fred.stub!(:persisted?).and_return(nil)
 
     @bob = mock('user')
+    @bob.stub!(:to_ary)
     @bob.stub!(:class).and_return(::Author)
     @bob.stub!(:to_label).and_return('Bob Rock')
     @bob.stub!(:login).and_return('bob')
@@ -134,6 +137,7 @@ module FormtasticSpecHelper
     @bob.stub!(:persisted?).and_return(nil)
     
     @james = mock('user')
+    @james.stub!(:to_ary)
     @james.stub!(:class).and_return(::Author)
     @james.stub!(:to_label).and_return('James Shock')
     @james.stub!(:login).and_return('james')
@@ -147,6 +151,7 @@ module FormtasticSpecHelper
     
 
     ::Author.stub!(:find).and_return([@fred, @bob])
+    ::Author.stub!(:to_ary)
     ::Author.stub!(:human_attribute_name).and_return { |column_name| column_name.humanize }
     ::Author.stub!(:human_name).and_return('::Author')
     ::Author.stub!(:reflect_on_association).and_return { |column_name| mock('reflection', :options => {}, :klass => Post, :macro => :has_many) if column_name == :posts }
@@ -156,6 +161,7 @@ module FormtasticSpecHelper
 
     # Sometimes we need a mock @post object and some Authors for belongs_to
     @new_post = mock('post')
+    @new_post.stub!(:to_ary)
     @new_post.stub!(:class).and_return(::Post)
     @new_post.stub!(:id).and_return(nil)
     @new_post.stub!(:new_record?).and_return(true)
@@ -169,6 +175,7 @@ module FormtasticSpecHelper
     @new_post.stub!(:persisted?).and_return(nil)
 
     @freds_post = mock('post')
+    @freds_post.stub!(:to_ary)
     @freds_post.stub!(:class).and_return(::Post)
     @freds_post.stub!(:to_label).and_return('Fred Smith')
     @freds_post.stub!(:id).and_return(19)
@@ -211,8 +218,10 @@ module FormtasticSpecHelper
     ::Post.stub!(:content_columns).and_return([mock('column', :name => 'title'), mock('column', :name => 'body'), mock('column', :name => 'created_at')])
     ::Post.stub!(:to_key).and_return(nil)
     ::Post.stub!(:persisted?).and_return(nil)
+    ::Post.stub!(:to_ary)
     
     @new_post.stub!(:title)
+    @new_post.stub!(:to_ary)
     @new_post.stub!(:body)
     @new_post.stub!(:published)
     @new_post.stub!(:publish_at)
